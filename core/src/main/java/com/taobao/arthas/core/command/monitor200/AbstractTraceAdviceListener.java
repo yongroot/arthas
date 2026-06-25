@@ -5,6 +5,7 @@ import com.alibaba.arthas.deps.org.slf4j.LoggerFactory;
 import com.taobao.arthas.core.advisor.Advice;
 import com.taobao.arthas.core.advisor.AdviceListenerAdapter;
 import com.taobao.arthas.core.advisor.ArthasMethod;
+import com.taobao.arthas.core.advisor.Enhancer;
 import com.taobao.arthas.core.shell.command.CommandProcess;
 import com.taobao.arthas.core.util.LogUtil;
 import com.taobao.arthas.core.util.ThreadLocalWatch;
@@ -49,7 +50,9 @@ public class AbstractTraceAdviceListener extends AdviceListenerAdapter {
     public void before(ClassLoader loader, Class<?> clazz, ArthasMethod method, Object target, Object[] args)
             throws Throwable {
         TraceEntity traceEntity = threadLocalTraceEntity(loader);
-        traceEntity.tree.begin(clazz.getName(), method.getName(), -1, false);
+        // 优先使用增强期预存的行号（lambda 合成方法可以借此显示正确的 #lineNumber）
+        int lineNumber = Enhancer.getMethodFirstLineNumber(clazz.getName(), method.getName(), method.getDescriptor());
+        traceEntity.tree.begin(clazz.getName(), method.getName(), lineNumber, false);
         traceEntity.deep++;
         // 开始计算本次方法调用耗时
         threadLocalWatch.start();

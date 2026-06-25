@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.alibaba.deps.org.objectweb.asm.ClassReader;
 import com.alibaba.deps.org.objectweb.asm.Opcodes;
@@ -93,6 +94,22 @@ public class Enhancer implements ClassFileTransformer {
     // 被增强的类的缓存
     private final static Map<Class<?>/* Class */, Object> classBytesCache = new WeakHashMap<Class<?>, Object>();
     private static SpyImpl spyImpl = new SpyImpl();
+
+    // 缓存 lambda 合成方法的第一行行号，供 trace 显示 #lineNumber
+    private final static ConcurrentHashMap<String, Integer> methodFirstLineMap = new ConcurrentHashMap<String, Integer>();
+
+    private static String methodKey(String className, String methodName, String methodDesc) {
+        return className + methodName + methodDesc;
+    }
+
+    public static void setMethodFirstLineNumber(String className, String methodName, String methodDesc, int lineNumber) {
+        methodFirstLineMap.put(methodKey(className, methodName, methodDesc), lineNumber);
+    }
+
+    public static int getMethodFirstLineNumber(String className, String methodName, String methodDesc) {
+        Integer line = methodFirstLineMap.get(methodKey(className, methodName, methodDesc));
+        return line != null ? line : -1;
+    }
 
     static {
         SpyAPI.setSpy(spyImpl);
@@ -341,6 +358,18 @@ public class Enhancer implements ClassFileTransformer {
                     }
                 }
                 affect.addMethodAndCount(inClassLoader, className, methodNode.name, methodNode.desc);
+                // 对 lambda 合成方法，预存第一行行号供 trace 显示 #lineNumber
+                if (methodNode.name.startsWith("lambda$")) {
+                    for (AbstractInsnNode insnNode = methodNode.instructions.getFirst(); insnNode != null; insnNode = insnNode
+                            .getNext()) {
+                        if (insnNode instanceof LineNumberNode) {
+                            // 使用点号格式的类名，与 clazz.getName() 保持一致
+                            setMethodFirstLineNumber(className.replace('/', '.'), methodNode.name, methodNode.desc,
+                                    ((LineNumberNode) insnNode).line);
+                            break;
+                        }
+                    }
+                }
             }
 
             // https://github.com/alibaba/arthas/issues/1223 , V1_5 的major version是49
